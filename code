@@ -1,0 +1,119 @@
+import machine
+import time
+from machine import SoftI2C, Pin , ADC
+from i2c_lcd import I2cLcd
+import ds18x20
+import onewire
+
+# I2C configuration for the LCD
+I2C_ADDR = 0x27
+totalRows = 2
+totalColumns = 16
+
+i2c = SoftI2C(scl=Pin(22), sda=Pin(21), freq=10000)
+lcd = I2cLcd(i2c, I2C_ADDR, totalRows, totalColumns)
+
+# Configure the DS18B20 sensor
+ds_pin = machine.Pin(14)  # Replace with your GPIO pin
+Buzzer_pin = 32
+Gas_analog_pin = 4 # Pin for MQ-2 gas sensor
+soil = ADC(Pin(35))
+m = 100
+min_moisture=0
+max_moisture=4095
+  # Pin for buzzer
+
+ds_sensor = ds18x20.DS18X20(onewire.OneWire(ds_pin))
+# Initialize ADC for sensors
+Buzzer = Pin(Buzzer_pin, Pin.OUT)
+Gas_analog = ADC(Pin(Gas_analog_pin))
+
+# Define threshold values
+gas_threshold = 4000  # Adjust this value based on your sensor calibration
+min_moisture=0
+max_moisture=4095
+
+soil.atten(ADC.ATTN_11DB)       #Full range: 3.3v
+soil.width(ADC.WIDTH_12BIT)     #range 0 to 4095
+
+
+
+
+
+
+def read_moisture_sensor():
+    soil.read()
+    time.sleep(2)
+    m = (max_moisture-soil.read())*100/(max_moisture-min_moisture)
+    moisture = '{:.1f} %'.format(m)
+    print('Soil Moisture:', moisture)
+    return m
+
+
+# Function to read and convert temperature
+def read_temperature():
+    roms = ds_sensor.scan()
+    ds_sensor.convert_temp()
+    time.sleep_ms(750)
+    temperature = ds_sensor.read_temp(roms[0])
+    return temperature
+
+def display_on_lcd_1(line1, line2, line3):
+    lcd.move_to(0, 0)
+    lcd.putstr(line1)
+    time.sleep(1)
+    lcd.clear()
+    lcd.move_to(0, 1)
+    lcd.putstr(line2)
+    time.sleep(1)
+    lcd.clear()
+    lcd.move_to(0,0)
+    lcd.putstr(line3)
+    # lcd.refresh()  # You may or may not need this line
+def display_on_lcd_2(line1, line2):
+    lcd.move_to(0, 0)
+    lcd.putstr(line1)
+    lcd.move_to(0, 1)
+    lcd.putstr(line2)
+    time.sleep(2)
+    lcd.clear()
+    
+
+
+
+
+
+
+while True:
+    #gas_value = read_gas_sensor()
+    moisture_value = read_moisture_sensor()
+    temperature = read_temperature()
+
+    # Check for moisture alert
+    if moisture_value < 25:
+        line1 = "Moisture: {:.2f}%".format(moisture_value)
+        line2="Moisure Alert!"
+    
+        display_on_lcd_2(line1, line2)
+
+    # Check for gas alert
+    gassensor_analog = Gas_analog.read()
+   
+
+    print("Gas Sensor:", gassensor_analog,"\t\t", end="")
+
+    if gassensor_analog > 600:
+        print("Gas")
+        Buzzer.on()  # send tone
+        line1="Gas:{}".format(gassensor_analog)
+        line2 = " Gas Alert!"
+        display_on_lcd_2(line1, line2)
+        time.sleep(1)
+        Buzzer.off()  # no tone
+    
+    
+    else:
+        line1 = "Temp: {:.2f}C".format(temperature)
+        line2 = "Moisture: {:.2f}%".format(moisture_value)
+        line3 = "Gas:{}".format(gassensor_analog)
+        display_on_lcd_1(line1, line2, line3)
